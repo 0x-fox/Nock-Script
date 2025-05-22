@@ -3,13 +3,19 @@ Nockchain Script for Linux
 Install: 
 --------------------
 cd
+
 nano nockchain_miner_final.sh
+
 #Copy script in and save
 
+
 #make it executable
+
 chmod +x nockchain_miner_final.sh
 
+
 #Run 
+
 ./nockchain_miner_final.sh
 
 
@@ -17,10 +23,17 @@ chmod +x nockchain_miner_final.sh
 Bootnode:
 
 --peer /ip4/95.216.102.60/udp/3006/quic-v1 
+
 --peer /ip4/65.108.123.225/udp/3006/quic-v1 
+
 --peer /ip4/65.109.156.108/udp/3006/quic-v1 
+
 --peer /ip4/65.21.67.175/udp/3006/quic-v1 
+
 --peer /ip4/65.109.156.172/udp/3006/quic-v1 
+
 --peer /ip4/34.174.22.166/udp/3006/quic-v1 
+
 --peer /ip4/34.95.155.151/udp/30000/quic-v1 
+
 --peer /ip4/34.18.98.38/udp/30000/quic-v1
