@@ -13,6 +13,7 @@ chmod +x nockchain_miner_final.sh
 ./nockchain_miner_final.sh
 
 
+
 Bootnode:
 
 --peer /ip4/95.216.102.60/udp/3006/quic-v1 
