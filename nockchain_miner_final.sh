@@ -113,7 +113,7 @@ backup_wallet_logs() {
 
 while true; do
     echo ""
-    echo "=== Menu Nockchain Miner by Fox ==="
+    echo "=== Menu Nockchain Miner v1 by Fox ==="
     echo "--- Installation / Mise à Jour ---"
     echo "1.  Installer dépendances"
     echo "2.  Installer Rust"
