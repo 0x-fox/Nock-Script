@@ -1,3 +1,19 @@
+
+ensure_single_screen() {
+    if screen -list | grep -q "\\.$SESSION_NAME"; then
+        echo "⚠️ Une session '$SESSION_NAME' est déjà active."
+        read -p "🔁 Voulez-vous la fermer avant de relancer ? [o/N] : " confirm
+        if [[ "$confirm" =~ ^[oO]$ ]]; then
+            screen -S "$SESSION_NAME" -X quit
+            echo "🛑 Ancienne session terminée."
+        else
+            echo "⛔ Lancement annulé."
+            return 1
+        fi
+    fi
+    return 0
+}
+
 #!/bin/bash
 
 # === Nockchain Miner Script (Avec menu structuré, transfert, logs, solde) ===
@@ -5,7 +21,15 @@
 INSTALL_DIR="$HOME/nockchain"
 WALLET_DIR="$HOME/.nockchain"
 SESSION_NAME="nockmine"
-RKEY_FILE="$WALLET_DIR/mining_key.txt"
+ENV_FILE="$INSTALL_DIR/.env"
+load_env() {
+    if [ -f "$ENV_FILE" ]; then
+        export $(grep -v "^#" "$ENV_FILE" | xargs)
+        echo "✅ Variables .env chargées."
+    else
+        echo "⚠️ Fichier .env introuvable à $ENV_FILE"
+    fi
+}
 
 install_deps() {
     sudo apt update
@@ -27,17 +51,15 @@ clone_and_build() {
     make install-nockchain-wallet
 }
 
-import_wallet_key() {
-    mkdir -p "$WALLET_DIR"
-    read -p "🔑 Entrez votre clé publique (mining-pubkey): " pubkey
-    echo "mining-pubkey $pubkey" > "$RKEY_FILE"
-    echo "✅ Clé sauvegardée dans $RKEY_FILE"
+edit_env_file() {
+    nano "$ENV_FILE"
 }
 
 show_rkey() {
-    if [ -f "$RKEY_FILE" ]; then
+    load_env
+    if [ -n "$MINING_PUBKEY" ]; then
         echo "🔑 Clé publique actuelle:"
-        cat "$RKEY_FILE"
+        echo "$MINING_PUBKEY"
     else
         echo "❌ Aucune clé publique importée."
     fi
@@ -48,22 +70,28 @@ edit_peers_file() {
 }
 
 start_mining_screen() {
-    if [ ! -f "$RKEY_FILE" ]; then
+    load_env
+    if [ -z "$MINING_PUBKEY" ]; then
         echo "❌ Clé publique non trouvée. Importez-la (option 8)."
         return
     fi
-    PUBKEY=$(awk '{print $2}' "$RKEY_FILE")
+    load_env
+    PUBKEY="$MINING_PUBKEY"
     [ -f "$WALLET_DIR/peers.txt" ] && peers=$(tr '\n' ' ' < "$WALLET_DIR/peers.txt") || read -p "🧩 Bootnodes (--peer ...): " peers
     rm -rf ./.data.nockchain .socket/nockchain_npc.sock
+    ensure_single_screen || return
     screen -S "$SESSION_NAME" -dm bash -c "nockchain --mine --mining-pubkey $PUBKEY $peers | tee -a ~/.nockchain/mining.log; echo '❌ Terminé'; read -n 1"
     echo "✅ Minage lancé dans screen '$SESSION_NAME'"
 }
 
 start_mining_autorestart() {
-    if [ ! -f "$RKEY_FILE" ]; then echo "❌ Clé manquante." ; return ; fi
-    PUBKEY=$(awk '{print $2}' "$RKEY_FILE")
+    load_env
+    if [ -z "$MINING_PUBKEY" ]; then echo "❌ Clé manquante." ; return ; fi
+    load_env
+    PUBKEY="$MINING_PUBKEY"
     [ -f "$WALLET_DIR/peers.txt" ] && peers=$(tr '\n' ' ' < "$WALLET_DIR/peers.txt") || read -p "🧩 Bootnodes (--peer ...): " peers
     rm -rf ./.data.nockchain .socket/nockchain_npc.sock
+    ensure_single_screen || return
     screen -S "$SESSION_NAME" -dm bash -c '
         while true; do
             echo "[🟢] Lancement à $(date)" | tee -a ~/.nockchain/mining_watchdog.log
@@ -73,6 +101,19 @@ start_mining_autorestart() {
         done
     '
     echo "✅ Auto-restart actif dans screen '$SESSION_NAME'"
+}
+
+start_mining_filtered_logs() {
+    load_env
+    if [ -z "$MINING_PUBKEY" ]; then
+        echo "❌ Clé publique non trouvée. Utilisez l’option 8 pour importer."
+        return
+    fi
+    load_env
+    PUBKEY="$MINING_PUBKEY"
+    echo "🔍 Minage avec logs filtrés (panic | mining | serf)..."
+    rm -rf ./.data.nockchain .socket/nockchain_npc.sock
+    nockchain --mine --mining-pubkey "$PUBKEY" | grep -aE "serf|panic|mining"
 }
 
 check_screen_status() {
@@ -89,8 +130,9 @@ export_keys() {
 }
 
 check_wallet_balance() {
-    if [ -f "$RKEY_FILE" ]; then
-        RKEY=$(awk '{print $2}' "$RKEY_FILE")
+    load_env
+    if [ -n "$MINING_PUBKEY" ]; then
+        RKEY="$MINING_PUBKEY"
         nockchain-wallet balance --pubkey "$RKEY"
     else
         echo "❌ Clé manquante. Utilisez l'option 8."
@@ -113,7 +155,7 @@ backup_wallet_logs() {
 
 while true; do
     echo ""
-    echo "=== Menu Nockchain Miner v1 by Fox ==="
+    echo "=== Menu Nockchain Miner ==="
     echo "--- Installation / Mise à Jour ---"
     echo "1.  Installer dépendances"
     echo "2.  Installer Rust"
@@ -122,12 +164,13 @@ while true; do
     echo "--- Commandes Minage ---"
     echo "4.  🚀 Démarrer le minage dans screen avec bootnodes"
     echo "4a. ♻️ Minage auto-restart avec logs"
+	echo "4b. 🔍 Minage avec logs filtrés (serf/panic/mining)"
     echo "5.  🔍 Vérifier état du minage"
     echo "6.  📺 Reprendre session screen"
     echo "7.  ✏️ Éditer les bootnodes (peers.txt)"
     echo ""
     echo "--- Outils Clés ---"
-    echo "8.  Importer ma clé publique pour le script"
+    echo "8.  ✏️ Modifier le fichier .env"
     echo "9.  Voir la clé publique"
     echo "10. 📄 Exporter le wallet (keys.export)"
     echo ""
@@ -144,10 +187,11 @@ while true; do
         3) clone_and_build ;;
         4) start_mining_screen ;;
         4a) start_mining_autorestart ;;
+		4b) start_mining_filtered_logs ;;
         5) check_screen_status ;;
         6) resume_screen ;;
         7) edit_peers_file ;;
-        8) import_wallet_key ;;
+        8) edit_env_file ;;
         9) show_rkey ;;
         10) export_keys ;;
         11) check_wallet_balance ;;
